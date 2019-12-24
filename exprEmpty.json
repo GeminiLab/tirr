@@ -1,0 +1,42 @@
+[
+    [],
+    [
+        {
+            "iFuncBody": [
+                {
+                    "tag": "IRImm",
+                    "iUName": [
+                        "IInt32",
+                        "t_0"
+                    ],
+                    "iLiteral": "100"
+                },
+                {
+                    "tag": "IRImm",
+                    "iUName": [
+                        "IInt32",
+                        "t_1"
+                    ],
+                    "iLiteral": "200"
+                },
+                {
+                    "tag": "IRBinary",
+                    "iOperand2": "t_1",
+                    "iUName": [
+                        "IInt32",
+                        "t_2"
+                    ],
+                    "iOperand1": "t_0",
+                    "iOperator": "+"
+                }
+            ],
+            "tag": "IRFun",
+            "iReturnField": [
+                "IInt32",
+                "t_2"
+            ],
+            "iArgumentField": [],
+            "iName": "main"
+        }
+    ]
+]

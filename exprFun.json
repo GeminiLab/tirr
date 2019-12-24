@@ -1,0 +1,69 @@
+[
+    [],
+    [
+        {
+            "iFuncBody": [
+                {
+                    "tag": "IRImm",
+                    "iUName": [
+                        "IInt32",
+                        "t_1"
+                    ],
+                    "iLiteral": "1"
+                },
+                {
+                    "tag": "IRBinary",
+                    "iOperand2": "t_1",
+                    "iUName": [
+                        "IInt32",
+                        "t_2"
+                    ],
+                    "iOperand1": "t_0",
+                    "iOperator": "+"
+                }
+            ],
+            "tag": "IRFun",
+            "iReturnField": [
+                "IInt32",
+                "t_2"
+            ],
+            "iArgumentField": [
+                [
+                    "IInt32",
+                    "t_0"
+                ]
+            ],
+            "iName": "f_0"
+        },
+        {
+            "iFuncBody": [
+                {
+                    "tag": "IRImm",
+                    "iUName": [
+                        "IInt32",
+                        "t_3"
+                    ],
+                    "iLiteral": "100"
+                },
+                {
+                    "tag": "IRInvoke",
+                    "iUName": [
+                        "IInt32",
+                        "t_4"
+                    ],
+                    "iArguments": [
+                        "t_3"
+                    ],
+                    "iInvokedFun": "f_0"
+                }
+            ],
+            "tag": "IRFun",
+            "iReturnField": [
+                "IInt32",
+                "t_4"
+            ],
+            "iArgumentField": [],
+            "iName": "main"
+        }
+    ]
+]

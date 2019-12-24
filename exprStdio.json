@@ -1,0 +1,80 @@
+[
+    [
+        "#include <stdio.h>",
+        "uint8_t readC(){return getchar();}",
+        "uint64_t writeC(uint8_t chr){putchar(chr);}"
+    ],
+    [
+        {
+            "iArgumentType": [],
+            "tag": "IRExternFun",
+            "iReturnType": "IUInt8",
+            "iName": "readC"
+        },
+        {
+            "iArgumentType": [
+                "IUInt8"
+            ],
+            "tag": "IRExternFun",
+            "iReturnType": "IUInt64",
+            "iName": "writeC"
+        },
+        {
+            "iFuncBody": [
+                {
+                    "tag": "IRInvoke",
+                    "iUName": [
+                        "IUInt8",
+                        "t_0"
+                    ],
+                    "iArguments": [],
+                    "iInvokedFun": "readC"
+                },
+                {
+                    "tag": "IRImm",
+                    "iUName": [
+                        "IUInt8",
+                        "t_1"
+                    ],
+                    "iLiteral": "1"
+                },
+                {
+                    "tag": "IRBinary",
+                    "iOperand2": "t_1",
+                    "iUName": [
+                        "IUInt8",
+                        "t_2"
+                    ],
+                    "iOperand1": "t_0",
+                    "iOperator": "+"
+                },
+                {
+                    "tag": "IRInvoke",
+                    "iUName": [
+                        "IUInt64",
+                        "t_3"
+                    ],
+                    "iArguments": [
+                        "t_2"
+                    ],
+                    "iInvokedFun": "writeC"
+                },
+                {
+                    "tag": "IRImm",
+                    "iUName": [
+                        "IInt32",
+                        "t_4"
+                    ],
+                    "iLiteral": "0"
+                }
+            ],
+            "tag": "IRFun",
+            "iReturnField": [
+                "IInt32",
+                "t_4"
+            ],
+            "iArgumentField": [],
+            "iName": "main"
+        }
+    ]
+]
