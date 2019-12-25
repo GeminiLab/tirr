@@ -236,19 +236,184 @@ namespace tirr {
 
             function.ReturnValue = function.GetOrDeclareVariable(rname, rtype);
 
-            foreach (var pass in Passes) {
-                while (pass(function)) { }
-            }
-
             block.Condition = null;
             block.TrueNext = block.FalseNext = null;
+
+            foreach (var pass in Passes) {
+                var not_done = true;
+                while (not_done) { (function, not_done) = pass(function); }
+            }
 
             function.Output();
 
             innerFun.ForEach(ProcessFunction);
         }
 
-        public static IList<Func<Function, bool>> Passes = new List<Func<Function, bool>>();
+        public static IList<Func<Function, (Function, bool)>> Passes =
+            new List<Func<Function, (Function, bool)>>(
+                new Func<Function, (Function, bool)>[] { 
+                    (Function fun) => { // constant optimization
+                        Console.WriteLine("constant opt...");
+                        var changed = false;
+                        for (int i = 0; i < fun.Blocks.Count; i ++) if(!fun.Blocks[i].Expired){
+                            var block = fun.Blocks[i];
+                            Dictionary<string, string> current_value = new Dictionary<string, string>();
+                            for (int j = 0; j < block.Statements.Count; j ++) if(!block.Statements[j].Expired){
+                                var stat = block.Statements[j];
+                                Console.WriteLine($"{stat.GetType()} | {stat}");
+                                if (stat.GetType() == typeof(SImm)) {
+                                    // this means that we found a constant!
+                                    var dname = ((SImm)stat).Destination.Name;
+                                    current_value[dname] = ((SImm)stat).Immediate;
+                                } else if (stat.GetType() == typeof(SAssign)) {
+                                    var dname = ((SAssign)stat).Destination.Name;
+                                    var sname = ((SAssign)stat).Source.Name;
+                                    if (!current_value.ContainsKey(sname)
+                                        || current_value[sname] == "<unknown>") {
+                                        current_value[dname] = "<unknown>";
+                                    } else {
+                                        Console.WriteLine($"!!! {dname} === {current_value[sname]}");
+                                        current_value[dname] = current_value[sname];
+                                        block.Statements[j] = new SImm{
+                                            Destination = ((SAssign)stat).Destination,
+                                            Immediate = current_value[dname]
+                                        };
+                                    }
+                                } else if (stat.GetType() == typeof(SBinary)) {
+                                    var dname = ((SBinary)stat).Destination.Name;
+                                    var o1name = ((SBinary)stat).Operand1.Name;
+                                    var o2name = ((SBinary)stat).Operand2.Name;
+                                    var op = ((SBinary)stat).Operation;
+                                    if (!current_value.ContainsKey(o1name)
+                                        || current_value[o1name] == "<unknown>"
+                                        || !current_value.ContainsKey(o2name)
+                                        || current_value[o2name] == "<unknown>") {
+                                        current_value[dname] = "<unknown>";
+                                    } else {
+                                        Console.WriteLine
+                                         ($"!!! {dname} === {current_value[o1name]} {op} {current_value[o2name]}");
+                                        current_value[dname] = "<unknown>";
+                                    }
+                                } else if (stat.GetType() == typeof(SCast)){
+                                    var dname = ((SCast)stat).Destination.Name;
+                                    current_value[dname] = "<unknown>";
+                                } else if (stat.GetType() == typeof(SCall)) {
+                                    var dname = ((SCall)stat).Destination.Name;
+                                    current_value[dname] = "<unknown>";
+                                } else if (stat.GetType() == typeof(SDeref)) {
+                                    var dname = ((SDeref)stat).Destination.Name;
+                                    current_value[dname] = "<unknown>";
+                                }
+                            }
+                            if (block.Condition != null) {
+                                var name = block.Condition.Name;
+                                if (current_value.ContainsKey(name) && current_value[name] != "<unknown>") {
+                                    changed = true;
+                                    block.FalseNext.Expired = block.TrueNext.Expired = true;
+                                    if (current_value[name] != "0") {
+                                        block.Statements.AddRange(block.TrueNext.Statements);
+                                        block.Condition = block.TrueNext.Condition;
+                                        block.FalseNext = block.TrueNext.FalseNext;
+                                        block.TrueNext = block.TrueNext.TrueNext;
+                                    } else {
+                                        block.Statements.AddRange(block.FalseNext.Statements);
+                                        block.Condition = block.FalseNext.Condition;
+                                        block.TrueNext = block.FalseNext.TrueNext;
+                                        block.FalseNext = block.FalseNext.FalseNext;
+                                    }
+                                }
+                            }
+                            fun.Blocks[i] = block;
+                        }
+                        return (fun, changed);
+                    },
+                    (Function fun) => { // faintness analysis
+                        Dictionary<int, SortedSet<String>> input = new Dictionary<int,SortedSet<String>>();
+                        for (int i = fun.Blocks.Count-1; i>=0; i--) if(!fun.Blocks[i].Expired){
+                            var block = fun.Blocks[i];
+                            SortedSet<String> c_input = new SortedSet<string>();
+                            if (block.TrueNext == null) {
+                                c_input.Add(fun.ReturnValue.Name);
+                            } else {
+                                c_input = input[block.TrueNext.GetHashCode()];
+                                if (block.FalseNext != null) {
+                                    c_input.UnionWith(input[block.FalseNext.GetHashCode()]);
+                                }
+                            }
+                            for (int j = block.Statements.Count-1; j>=0; j--) if(!block.Statements[j].Expired){
+                                var stat = block.Statements[j];
+                                if (stat.GetType() == typeof(SImm)) {
+                                    var dname = ((SImm)stat).Destination.Name;
+                                    if (c_input.Contains(dname)) {
+                                        c_input.Remove(dname);
+                                    } else {
+                                        stat.Expired = true;
+                                    }
+                                } else if (stat.GetType() == typeof(SAssign)) {
+                                    var dname = ((SAssign)stat).Destination.Name;
+                                    var sname = ((SAssign)stat).Source.Name;
+                                    if (dname == sname || !c_input.Contains(dname)) {
+                                        stat.Expired = true;
+                                    } else {
+                                        c_input.Remove(dname);
+                                        c_input.Add(sname);
+                                    }
+                                } else if (stat.GetType() == typeof(SBinary)) {
+                                    var dname = ((SBinary)stat).Destination.Name;
+                                    var o1name = ((SBinary)stat).Operand1.Name;
+                                    var o2name = ((SBinary)stat).Operand2.Name;
+                                    if (!c_input.Contains(dname)) {
+                                        stat.Expired = true;
+                                    } else {
+                                        c_input.Remove(dname);
+                                        c_input.Add(o1name);
+                                        c_input.Add(o2name);
+                                    }
+                                } else if (stat.GetType() == typeof(SCall)) {
+                                    var dname = ((SCall)stat).Destination.Name;
+                                    /* if (!c_input.Contains(dname)) {
+                                        stat.Expired = true;
+                                    } else */ {
+                                        c_input.Remove(dname);
+                                        foreach (var v in ((SCall)stat).Arguments)
+                                            c_input.Add(v.Name);
+                                    }
+                                } else if (stat.GetType() == typeof(SCast)) {
+                                    var dname = ((SCast)stat).Destination.Name;
+                                    var sname = ((SCast)stat).Source.Name;
+                                    if (!c_input.Contains(dname)) {
+                                        stat.Expired = true;
+                                    } else {
+                                        c_input.Remove(dname);
+                                        c_input.Add(sname);
+                                    }
+                                } else if (stat.GetType() == typeof(SDeref)) {
+                                    var dname = ((SDeref)stat).Destination.Name;
+                                    var sname = ((SDeref)stat).Address.Name;
+                                    if (!c_input.Contains(dname)) {
+                                        stat.Expired = true;
+                                    } else {
+                                        c_input.Remove(dname);
+                                        c_input.Add(sname);
+                                    }
+                                } else if (stat.GetType() == typeof(SModifyRef)) {
+                                    var dname = ((SModifyRef)stat).Destination.Name;
+                                    var sname = ((SModifyRef)stat).Source.Name;
+                                    /* if (!c_input.Contains(dname)) {
+                                        stat.Expired = true;
+                                    } else */ {
+                                        c_input.Remove(dname);
+                                        c_input.Add(sname);
+                                    }
+                                }
+                                block.Statements[j] = stat;
+                            }
+                            input[block.GetHashCode()] = c_input;
+                            fun.Blocks[i] = block;
+                        }
+                        return (fun, false);
+                    },
+                });
 
         public static void Main(string[] args) {
             string str = "", s;

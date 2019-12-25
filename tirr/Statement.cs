@@ -4,6 +4,7 @@ using System.Linq;
 
 namespace tirr {
     public abstract class Statement {
+        public bool Expired = false;
         public abstract override string ToString();
     }
 
@@ -82,7 +83,7 @@ namespace tirr {
         public Variable Condition;
         public Block TrueNext;
         public Block FalseNext;
-
+        public bool Expired = false;
         public string GetEntryTag() => $"bob_0x{GetHashCode():x8}"; // begin of block # 0x......
     }
 
@@ -124,10 +125,10 @@ namespace tirr {
 
             Console.WriteLine($"goto {Entry.GetEntryTag()};");
 
-            foreach (var block in Blocks) {
+            foreach (var block in Blocks) if (!block.Expired){
                 Console.WriteLine($"{block.GetEntryTag()}:");
 
-                foreach (var blockStatement in block.Statements) {
+                foreach (var blockStatement in block.Statements) if (!blockStatement.Expired){
                     Console.WriteLine(blockStatement.ToString());
                 }
 
