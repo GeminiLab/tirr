@@ -22,6 +22,20 @@ namespace tirr {
             };
         }
 
+        public static int TypeLength(string v) {
+            return v switch
+            {
+                "int8_t" => 8,
+                "int16_t" => 16,
+                "int32_t" => 32,
+                "int64_t" => 64,
+                "uint8_t" => 8,
+                "uint16_t" => 16,
+                "uint32_t" => 32,
+                "uint64_t" => 64,
+                _ => 0,
+            };
+        }
         public static SCall ProcessInvoke(JsonElement elem, Function function) {
             var invoked = elem.GetProperty("iInvokedFun").GetString();
             var rtype = TypeToType(elem.GetProperty("iUName")[0].GetString());
@@ -239,10 +253,10 @@ namespace tirr {
             block.Condition = null;
             block.TrueNext = block.FalseNext = null;
 
-            // foreach (var pass in Passes) {
-            //     var not_done = true;
-            //     while (not_done) { (function, not_done) = pass(function); }
-            // }
+             foreach (var pass in Passes) {
+                 var not_done = true;
+                 while (not_done) { (function, not_done) = pass(function); }
+             }
 
             // no, we won't stop here!
             // function.Output();
@@ -255,18 +269,47 @@ namespace tirr {
             return fnList;
         }
 
+        public static string FuckTheOp(string op, string o1, string o1t, string o2, string o2t)
+        {
+            var result = "<unknown>";
+            unchecked {
+                UInt64 o1_v = ulong.Parse(o1);
+                UInt64 o2_v = ulong.Parse(o2);
+                
+                var (res, done) = op switch {
+                    "+" => (o1_v + o2_v, true),
+                    "-" => (o1_v - o2_v, true),
+                    "*" => (o1_v * o2_v, true),
+                    "/" => (o1_v / o2_v, true),
+                    "==" => (o1_v == o2_v ? 1ul : 0ul, true),
+                    "!=" => (o1_v != o2_v ? 1ul : 0ul, true),
+                    ">" => (o1_v > o2_v ? 1ul : 0ul, true),
+                    "<" => (o1_v < o2_v ? 1ul : 0ul, true),
+                    ">=" => (o1_v >= o2_v ? 1ul : 0ul, true),
+                    "<=" => (o1_v <= o2_v ? 1ul : 0ul, true),
+                    _ => (0ul, false)
+                };
+                if (done) {
+                    int lift_type = Math.Max(TypeLength(o1t), TypeLength(o2t));
+                    result = $"{res & ((1ul << lift_type) - 1)}";
+                }
+            }
+            return result;
+        }
         public static IList<Func<Function, (Function, bool)>> Passes =
             new List<Func<Function, (Function, bool)>>(
                 new Func<Function, (Function, bool)>[] { 
                     (Function fun) => { // constant optimization
-                        Console.WriteLine("constant opt...");
+                        //Console.WriteLine("constant opt...");
                         var changed = false;
+                        Dictionary<int, Dictionary<string, string>> value =  new Dictionary<int, Dictionary<string, string>>();
                         for (int i = 0; i < fun.Blocks.Count; i ++) if(!fun.Blocks[i].Expired){
                             var block = fun.Blocks[i];
-                            Dictionary<string, string> current_value = new Dictionary<string, string>();
+                            var current_value = value.TryGetValue(block.GetHashCode(), out var d) ? d : value[block.GetHashCode()] = new Dictionary<string, string>();
+
                             for (int j = 0; j < block.Statements.Count; j ++) if(!block.Statements[j].Expired){
                                 var stat = block.Statements[j];
-                                Console.WriteLine($"{stat.GetType()} | {stat}");
+                                // Console.WriteLine($"{stat.GetType()} | {stat}");
                                 if (stat.GetType() == typeof(SImm)) {
                                     // this means that we found a constant!
                                     var dname = ((SImm)stat).Destination.Name;
@@ -278,7 +321,7 @@ namespace tirr {
                                         || current_value[sname] == "<unknown>") {
                                         current_value[dname] = "<unknown>";
                                     } else {
-                                        Console.WriteLine($"!!! {dname} === {current_value[sname]}");
+                                       // Console.WriteLine($"!!! {dname} === {current_value[sname]}");
                                         current_value[dname] = current_value[sname];
                                         block.Statements[j] = new SImm{
                                             Destination = ((SAssign)stat).Destination,
@@ -288,7 +331,9 @@ namespace tirr {
                                 } else if (stat.GetType() == typeof(SBinary)) {
                                     var dname = ((SBinary)stat).Destination.Name;
                                     var o1name = ((SBinary)stat).Operand1.Name;
+                                    var o1type = ((SBinary)stat).Operand1.Type;
                                     var o2name = ((SBinary)stat).Operand2.Name;
+                                    var o2type = ((SBinary)stat).Operand2.Type;
                                     var op = ((SBinary)stat).Operation;
                                     if (!current_value.ContainsKey(o1name)
                                         || current_value[o1name] == "<unknown>"
@@ -296,9 +341,14 @@ namespace tirr {
                                         || current_value[o2name] == "<unknown>") {
                                         current_value[dname] = "<unknown>";
                                     } else {
-                                        Console.WriteLine
-                                         ($"!!! {dname} === {current_value[o1name]} {op} {current_value[o2name]}");
-                                        current_value[dname] = "<unknown>";
+                                        current_value[dname] = FuckTheOp(op, current_value[o1name], o1type,
+                                                                            current_value[o2name], o2type);
+                                        block.Statements[j] = new SImm{
+                                            Destination = ((SBinary)stat).Destination,
+                                            Immediate = current_value[dname]
+                                        };
+                                        //Console.WriteLine
+                                        // ($"!!! {dname} === {current_value[o1name]} {op} {current_value[o2name]}");
                                     }
                                 } else if (stat.GetType() == typeof(SCast)){
                                     var dname = ((SCast)stat).Destination.Name;
@@ -315,31 +365,43 @@ namespace tirr {
                                 var name = block.Condition.Name;
                                 if (current_value.ContainsKey(name) && current_value[name] != "<unknown>") {
                                     changed = true;
-                                    block.FalseNext.Expired = block.TrueNext.Expired = true;
+                                    block.Condition = null;
                                     if (current_value[name] != "0") {
-                                        block.Statements.AddRange(block.TrueNext.Statements);
-                                        block.Condition = block.TrueNext.Condition;
-                                        block.FalseNext = block.TrueNext.FalseNext;
-                                        block.TrueNext = block.TrueNext.TrueNext;
+                                        block.FalseNext.Expired = true;
+                                        block.FalseNext = null;
                                     } else {
-                                        block.Statements.AddRange(block.FalseNext.Statements);
-                                        block.Condition = block.FalseNext.Condition;
-                                        block.TrueNext = block.FalseNext.TrueNext;
-                                        block.FalseNext = block.FalseNext.FalseNext;
+                                        block.TrueNext.Expired = true;
+                                        block.TrueNext = null;
                                     }
                                 }
                             }
                             fun.Blocks[i] = block;
+                            if (block.TrueNext != null) {
+                                var tv = value.TryGetValue(block.TrueNext.GetHashCode(), out var _d) ? _d : value[block.TrueNext.GetHashCode()] = new Dictionary<string, string>();
+                                foreach (var (key,val) in current_value) {
+                                    if (!tv.ContainsKey(key)) tv[key] = val;
+                                    else if (tv[key] != val) tv[key] = "<unknown>";
+                                }
+                            }
+                            if (block.FalseNext != null) {
+                                var tv = value.TryGetValue(block.FalseNext.GetHashCode(), out var _d) ? _d : value[block.FalseNext.GetHashCode()] = new Dictionary<string, string>();
+                                foreach (var (key,val) in current_value) {
+                                    if (!tv.ContainsKey(key)) tv[key] = val;
+                                    else if (tv[key] != val) tv[key] = "<unknown>";
+                                }
+                            }
                         }
                         return (fun, changed);
                     },
                     (Function fun) => { // faintness analysis
                         Dictionary<int, SortedSet<String>> input = new Dictionary<int,SortedSet<String>>();
+                        SortedSet<String> live = new SortedSet<string>();
                         for (int i = fun.Blocks.Count-1; i>=0; i--) if(!fun.Blocks[i].Expired){
                             var block = fun.Blocks[i];
                             SortedSet<String> c_input = new SortedSet<string>();
                             if (block.TrueNext == null) {
                                 c_input.Add(fun.ReturnValue.Name);
+                                live.Add(fun.ReturnValue.Name);
                             } else {
                                 c_input = input[block.TrueNext.GetHashCode()];
                                 if (block.FalseNext != null) {
@@ -352,6 +414,7 @@ namespace tirr {
                                     var dname = ((SImm)stat).Destination.Name;
                                     if (c_input.Contains(dname)) {
                                         c_input.Remove(dname);
+                                        live.Add(dname);
                                     } else {
                                         stat.Expired = true;
                                     }
@@ -362,7 +425,9 @@ namespace tirr {
                                         stat.Expired = true;
                                     } else {
                                         c_input.Remove(dname);
+                                        live.Add(dname);
                                         c_input.Add(sname);
+                                        live.Add(sname);
                                     }
                                 } else if (stat.GetType() == typeof(SBinary)) {
                                     var dname = ((SBinary)stat).Destination.Name;
@@ -372,8 +437,11 @@ namespace tirr {
                                         stat.Expired = true;
                                     } else {
                                         c_input.Remove(dname);
+                                        live.Add(dname);
                                         c_input.Add(o1name);
+                                        live.Add(o1name);
                                         c_input.Add(o2name);
+                                        live.Add(o2name);
                                     }
                                 } else if (stat.GetType() == typeof(SCall)) {
                                     var dname = ((SCall)stat).Destination.Name;
@@ -381,8 +449,11 @@ namespace tirr {
                                         stat.Expired = true;
                                     } else */ {
                                         c_input.Remove(dname);
-                                        foreach (var v in ((SCall)stat).Arguments)
+                                        live.Add(dname);
+                                        foreach (var v in ((SCall)stat).Arguments){
                                             c_input.Add(v.Name);
+                                            live.Add(v.Name);
+                                        }
                                     }
                                 } else if (stat.GetType() == typeof(SCast)) {
                                     var dname = ((SCast)stat).Destination.Name;
@@ -391,7 +462,9 @@ namespace tirr {
                                         stat.Expired = true;
                                     } else {
                                         c_input.Remove(dname);
+                                        live.Add(dname);
                                         c_input.Add(sname);
+                                        live.Add(sname);
                                     }
                                 } else if (stat.GetType() == typeof(SDeref)) {
                                     var dname = ((SDeref)stat).Destination.Name;
@@ -400,7 +473,9 @@ namespace tirr {
                                         stat.Expired = true;
                                     } else {
                                         c_input.Remove(dname);
+                                        live.Add(dname);
                                         c_input.Add(sname);
+                                        live.Add(sname);
                                     }
                                 } else if (stat.GetType() == typeof(SModifyRef)) {
                                     var dname = ((SModifyRef)stat).Destination.Name;
@@ -409,13 +484,19 @@ namespace tirr {
                                         stat.Expired = true;
                                     } else */ {
                                         c_input.Remove(dname);
+                                        live.Add(dname);
                                         c_input.Add(sname);
+                                        live.Add(sname);
                                     }
                                 }
                                 block.Statements[j] = stat;
                             }
                             input[block.GetHashCode()] = c_input;
                             fun.Blocks[i] = block;
+                        }
+                        foreach (var (key,val) in fun.Variables)
+                        {
+                            val.Expired = !live.Contains(key);
                         }
                         return (fun, false);
                     },

@@ -89,6 +89,7 @@ namespace tirr {
 
     public class Variable {
         public bool IsConstant = false;
+        public bool Expired = false;
         public string Type;
         public string Name;
     }
@@ -123,7 +124,7 @@ namespace tirr {
             Console.WriteLine($"{ReturnValue.Type} {Name}({string.Join(',', Arguments.Select(arg => $"{arg.Type} {arg.Name}"))}) {{");
 
             foreach (var value in Variables.Values) {
-                if (!Arguments.Contains(value) && value.Type != "<ignore>" && value.Type != "<err>")
+                if (!Arguments.Contains(value) && value.Type != "<ignore>" && value.Type != "<err>" && !value.Expired)
                     // ... to tackle with STRINGLITERAL we ignore all <err>s
                     Console.WriteLine($"{value.Type} {value.Name};");
             }
