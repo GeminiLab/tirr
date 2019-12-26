@@ -116,11 +116,16 @@ namespace tirr {
             return b;
         }
 
+        public String GetSignature() {
+            return $"{ReturnValue.Type} {Name}({string.Join(',', Arguments.Select(arg => $"{arg.Type}"))});";
+        }
         public void Output() {
             Console.WriteLine($"{ReturnValue.Type} {Name}({string.Join(',', Arguments.Select(arg => $"{arg.Type} {arg.Name}"))}) {{");
 
             foreach (var value in Variables.Values) {
-                if (!Arguments.Contains(value) && value.Type != "<ignore>") Console.WriteLine($"{value.Type} {value.Name};");
+                if (!Arguments.Contains(value) && value.Type != "<ignore>" && value.Type != "<err>")
+                    // ... to tackle with STRINGLITERAL we ignore all <err>s
+                    Console.WriteLine($"{value.Type} {value.Name};");
             }
 
             Console.WriteLine($"goto {Entry.GetEntryTag()};");

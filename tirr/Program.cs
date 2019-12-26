@@ -205,7 +205,7 @@ namespace tirr {
             }
         }
 
-        public static void ProcessFunction(JsonElement elem) {
+        public static List<Function> ProcessFunction(JsonElement elem) {
             var name = elem.GetProperty("iName").GetString();
             var args = elem.GetProperty("iArgumentField");
             var rtype = TypeToType(elem.GetProperty("iReturnField")[0].GetString());
@@ -239,14 +239,20 @@ namespace tirr {
             block.Condition = null;
             block.TrueNext = block.FalseNext = null;
 
-            foreach (var pass in Passes) {
-                var not_done = true;
-                while (not_done) { (function, not_done) = pass(function); }
-            }
+            // foreach (var pass in Passes) {
+            //     var not_done = true;
+            //     while (not_done) { (function, not_done) = pass(function); }
+            // }
 
-            function.Output();
-
-            innerFun.ForEach(ProcessFunction);
+            // no, we won't stop here!
+            // function.Output();
+            List<Function> fnList = new List<Function>();
+            foreach (var fun in innerFun)
+                fnList.AddRange(ProcessFunction(fun));
+            
+            // instead, we will return this Function;
+            fnList.Add(function);
+            return fnList;
         }
 
         public static IList<Func<Function, (Function, bool)>> Passes =
@@ -422,7 +428,7 @@ namespace tirr {
             using var doc = JsonDocument.Parse(str);
             var root = doc.RootElement;
             var sectionCount = root.GetArrayLength();
-            
+            var functionList = new List<Function>();
             for (int i = 0; i < sectionCount; ++i) {
                 var section = root[i];
                 var sectionLength = section.GetArrayLength();
@@ -440,13 +446,24 @@ namespace tirr {
                         case "IRExternFun":
                             break;
                         case "IRFun":
-                            ProcessFunction(elem);
+                            functionList.AddRange(ProcessFunction(elem));
+                            break;
+                        case "IRStringLiteral":
+                            var name = elem.GetProperty("iName").GetString();
+                            var literal = elem.GetProperty("iStringLiteral").GetString();
+                            Console.WriteLine($"const char {name}[] = \"{literal}\";");
                             break;
                         default:
                             break;
                         }
                     }
                 }
+            }
+            foreach (var fun in functionList) {
+                Console.WriteLine(fun.GetSignature());
+            }
+            foreach (var fun in functionList) {
+                fun.Output();
             }
         }
     }
